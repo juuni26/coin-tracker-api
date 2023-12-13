@@ -148,27 +148,47 @@ The application initializes a SQLite database named `tracker_coin.db` with three
 - **Route**: /login
 - **Method**: POST
 - **Description**: Logs in a user and returns an access token.
+- Example 
+    ```
+    http --json POST http://localhost:8000/login username=your_username password=your_password
+
 
 ### **Register**
 - **Route**: /register
 - **Method**: POST
 - **Description**: Registers a new user and returns an access token.
+- Example 
+    ```
+    http --json POST http://localhost:8000/register username=your_username password=your_password
+
 
 ### **Logout**
 - **Route**: /logout
 - **Method**: POST
 - **Description**: Logs out a user.
+- Example 
+    ```
+    http --json POST http://localhost:8000/logout "Authorization: Bearer your_generated_jwt_token"
+
 
 ## Protected Routes (Authenticated User Only)
 ### **Add Tracked Coin**
 - **Route**: /coin-track
 - **Method**: POST
 - **Description**: Adds a tracked coin to a user's list.
+- Example 
+    ```
+    http --json POST http://localhost:8000/coin-track "Authorization: Bearer your_generated_jwt_token" coin_id=coin_id_you_wanna_track
+
 
 ### Get Tracked Coins
 - **Route**: /coin-track
 - **Method**: GET
 - **Description**: Retrieves all tracked coins for a user.
+- Example 
+    ```
+    http --json GET http://localhost:8000/coin-track "Authorization: Bearer your_generated_jwt_token"
+
 
 ## **Try It Live**
 
