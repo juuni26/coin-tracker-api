@@ -289,7 +289,7 @@ class CoinTrack(BaseModel):
     coin_id: int
 
 
-@app.post("/coin-track", dependencies=[Depends(auth_middleware)])
+@app.post("/add-coin-track", dependencies=[Depends(auth_middleware)])
 def addTrackedCoin(req: Request, coin: CoinTrack):
     con = sqlite3.connect("tracker_coin.db")
     cur = con.cursor()
@@ -323,6 +323,40 @@ def addTrackedCoin(req: Request, coin: CoinTrack):
         con.commit()
         con.close()
         return {"username": req.state.username, "message": "coin added to tracker successfully"}
+    except Exception as e:
+        con.close()
+        data = {"status": "failed", "message": str(e)}
+        return JSONResponse(content=data, status_code=500)
+
+@app.post("/remove-coin-track", dependencies=[Depends(auth_middleware)])
+def removeTrackedCoin(req: Request, coin: CoinTrack):
+    con = sqlite3.connect("tracker_coin.db")
+    cur = con.cursor()
+    try:
+        user_id = req.state.user_id
+        coin_id = coin.coin_id
+
+        # Check if the user is tracking the specified coin
+        cur.execute('''
+            SELECT id FROM user_coins
+            WHERE user_id = ? AND coin_id = ?
+        ''', (user_id, coin_id))
+        result = cur.fetchone()
+
+        if not result:
+            con.close()
+            data = {"status": "failed", "message": "Coin not found in user's tracker"}
+            return JSONResponse(content=data, status_code=400)
+
+        # Remove the tracked coin
+        cur.execute('''
+            DELETE FROM user_coins
+            WHERE user_id = ? AND coin_id = ?
+        ''', (user_id, coin_id))
+
+        con.commit()
+        con.close()
+        return {"coin_id":coin_id,"message": "Coin removed from tracker successfully"}
     except Exception as e:
         con.close()
         data = {"status": "failed", "message": str(e)}

@@ -30,8 +30,7 @@ username = 'test_' + ''.join(secrets.choice(string.ascii_letters + string.digits
 password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12))
 jwt_token = ""
 
-def test_register():
-    print(username,password,"ye")
+def test_register():    
     response = client.post(
         "/register",
       json={"username": username, "password": password}
@@ -55,7 +54,7 @@ def test_login():
 
 # protected route test
 def test_add_tracked_coin():
-    response = client.post("/coin-track", json={"coin_id": 1}, headers={"Authorization": f"Bearer {jwt_token}"})
+    response = client.post("/add-coin-track", json={"coin_id": 1}, headers={"Authorization": f"Bearer {jwt_token}"})
     assert response.status_code == 200
     assert "message" in response.json()
 
@@ -63,6 +62,17 @@ def test_get_tracked_coin():
     response = client.get("/coin-track", headers={"Authorization": f"Bearer {jwt_token}"})
     assert response.status_code == 200
     assert "data" in response.json()
+
+def test_remove_tracked_coin():
+    # Assuming jwt_token is a valid JWT token
+    response = client.post("/remove-coin-track", json={"coin_id": 1}, headers={"Authorization": f"Bearer {jwt_token}"})
+
+    assert response.status_code == 200
+    assert "coin_id" in response.json()
+    assert "message" in response.json()
+
+    # Check if the message indicates successful removal
+    assert response.json()["message"] == "Coin removed from tracker successfully"
 
 def test_logout():
     response = client.post("/logout", headers={"Authorization": f"Bearer {jwt_token}"})
