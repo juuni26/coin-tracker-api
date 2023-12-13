@@ -2,7 +2,10 @@ from fastapi.testclient import TestClient
 import secrets
 import string
 
-from .main import app
+try:
+    from .main import app  # Attempt relative import
+except ImportError:
+    from main import app  # Fallback to absolute import
 
 client = TestClient(app)
 
