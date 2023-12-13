@@ -16,8 +16,9 @@
   - [Register](#register)
   - [Logout](#logout)
 - [Protected Routes](#protected-routes)
-  - [Add Tracked Coin](#add-tracked-coin)
+  - [Add Coin To Track](#add-tracked-coin)
   - [Get Tracked Coins](#get-tracked-coins)
+  - [Remove Tracked Coin](#remove-tracked-coin)
 - [Try it Live](#try-it-live)
 
 ## Introduction
