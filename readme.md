@@ -4,8 +4,8 @@
 
 - [Introduction](#introduction)
 - [Installation](#installation)
-- [Testing Application](#testing)
-- [How Authentication Works](#how-auth-work)
+- [Testing Application](#testing-application)
+- [How Authentication Works](#how-authentication-work)
 - [Database Initialization](#database-initialization)
 - [General Routes](#general-routes)
   - [Update Coins](#update-coins)
@@ -19,6 +19,7 @@
   - [Get Tracked Coins](#get-tracked-coins)
   - [Remove Tracked Coin](#remove-tracked-coin)
 - [Try it Live](#try-it-live)
+- [Postman Docs](#postman-docs)
 
 ## Introduction
 
@@ -200,3 +201,6 @@ you can try out it's live : http://167.172.65.57:8000
 example: 
     
     http get http://167.172.65.57:8000/coins
+
+## **Postman Docs**
+You can export collection to Postman from file `Coin-Tracker-API.postman_collection.json`
