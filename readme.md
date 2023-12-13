@@ -23,7 +23,7 @@
 
 ## Introduction
 
-This FastAPI application, crafted in Python 3.11.5, offers a straightforward API for efficiently managing and tracking cryptocurrency coins. Its features include easy data updates, user authentication, and personalized coin tracking.
+This Coin-Tracker application, crafted in Python 3.11.5 using Framework FastAPI, offers a straightforward API for efficiently managing and tracking cryptocurrency coins. Its features include easy data updates, user authentication, and personalized coin tracking.
 
 ## Installation
 
@@ -64,7 +64,7 @@ This FastAPI application, crafted in Python 3.11.5, offers a straightforward API
     ```env
     JWT_SECRET_KEY=your_secret_key
     
-7. Run the FastAPI application:
+7. Run the Coin-Tracker application:
 
     ```bash
     uvicorn main:app --reload
