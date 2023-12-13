@@ -10,19 +10,23 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 load_dotenv()
 COIN_PATH = "coins.json"
 # jwt
 SECRET_KEY = os.getenv("JWT_SECRET_KEY") or "seweey"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 40
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 app = FastAPI()
 
 # helpers function
+
+
+def verify_password_confirmation(password, password_confirmation):
+    return password == password_confirmation
 
 
 def verify_password(plain_password, hashed_password):
@@ -60,7 +64,7 @@ def db_init():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
         )
     ''')
@@ -101,7 +105,7 @@ def db_truncate_tables():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
         )
     ''')
@@ -139,6 +143,7 @@ db_init()
 @app.get("/")
 def index():
     return {"message": "Hi"}
+
 
 @app.get("/reset-data")
 def resetData():
@@ -204,49 +209,54 @@ def auth_middleware(request: Request, token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
+        email = payload.get("sub")
         user_id = payload.get("user_id")
 
-        request.state.username = username
+        request.state.email = email
         request.state.user_id = user_id
 
     except Exception as e:
         raise credentials_exception
 
 
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
+    password_confirmation: str
+
+
 class UserAccess(BaseModel):
-    username: str
+    email: str
     password: str
 
 
 @app.post("/login")
 def login(user: UserAccess):
     try:
-        username = user.username
+        email = user.email
         password = user.password
-
         con = sqlite3.connect("tracker_coin.db")
         cur = con.cursor()
         cur.execute('''
             SELECT id,password FROM users
-            WHERE username = ?
+            WHERE email = ?
             ;
-        ''', (username,))
+        ''', (email,))
 
         # Fetch the result
         result = cur.fetchone()
         if not result:
-            return {"status_code": 400, "message": "username/password invalid"}
+            return {"status_code": 400, "message": "email/password invalid"}
         if not verify_password(password, result[1]):
-            return {"status_code": 400, "message": "username/password invalid"}
+            return {"status_code": 400, "message": "email/password invalid"}
 
         con.commit()
         con.close()
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": username, "user_id": result[0]}, expires_delta=access_token_expires
+            data={"sub": email, "user_id": result[0]}, expires_delta=access_token_expires
         )
-        return {"message": "login successfull", "username": username, "token": access_token}
+        return {"message": "login successfull", "email": email, "token": access_token}
 
     except Exception as e:
         con.close()
@@ -255,23 +265,35 @@ def login(user: UserAccess):
 
 
 @app.post("/register")
-def register(user: UserAccess):
+def register(user: UserRegister):
     con = sqlite3.connect("tracker_coin.db")
     cur = con.cursor()
     try:
-        username = user.username
+        email = user.email
         password = user.password
-        insert_query = "INSERT INTO users (username, password) VALUES (?, ?)"
-        values = (username, hash_password(password))
+        password_confirmation = user.password_confirmation
+
+        if not email:
+            con.close()
+            data = {"status": "failed", "message": "Invalid email format"}
+            return JSONResponse(content=data, status_code=400)
+        if not verify_password_confirmation(password, password_confirmation):
+            con.close()
+            data = {"status": "failed",
+                    "message": "password confirmation is not match with the password"}
+            return JSONResponse(content=data, status_code=400)
+
+        insert_query = "INSERT INTO users (email, password) VALUES (?, ?)"
+        values = (email, hash_password(password))
         cur.execute(insert_query, values)
         user_id = cur.lastrowid
         con.commit()
         con.close()
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": username, "user_id": user_id}, expires_delta=access_token_expires
+            data={"sub": email, "user_id": user_id}, expires_delta=access_token_expires
         )
-        return {"message": "Created User Successfully", "username": username, "token": access_token}
+        return {"message": "Created User Successfully", "email": email, "token": access_token}
     except Exception as e:
         con.close()
         data = {"status": "failed", "message": str(e)}
@@ -282,7 +304,7 @@ def register(user: UserAccess):
 @app.post("/logout", dependencies=[Depends(auth_middleware)])
 def logout(req: Request):
     # because we stateless in behind, logout mechanism applied in frontend
-    return {"username": req.state.username, "message": "logout successfull", "token": ""}
+    return {"email": req.state.email, "message": "logout successfull", "token": ""}
 
 
 class CoinTrack(BaseModel):
@@ -322,11 +344,12 @@ def addTrackedCoin(req: Request, coin: CoinTrack):
         cur.execute(insert_query, values)
         con.commit()
         con.close()
-        return {"username": req.state.username, "message": "coin added to tracker successfully"}
+        return {"email": req.state.email, "message": "coin added to tracker successfully"}
     except Exception as e:
         con.close()
         data = {"status": "failed", "message": str(e)}
         return JSONResponse(content=data, status_code=500)
+
 
 @app.post("/remove-coin-track", dependencies=[Depends(auth_middleware)])
 def removeTrackedCoin(req: Request, coin: CoinTrack):
@@ -345,7 +368,8 @@ def removeTrackedCoin(req: Request, coin: CoinTrack):
 
         if not result:
             con.close()
-            data = {"status": "failed", "message": "Coin not found in user's tracker"}
+            data = {"status": "failed",
+                    "message": "Coin not found in user's tracker"}
             return JSONResponse(content=data, status_code=400)
 
         # Remove the tracked coin
@@ -356,7 +380,7 @@ def removeTrackedCoin(req: Request, coin: CoinTrack):
 
         con.commit()
         con.close()
-        return {"coin_id":coin_id,"message": "Coin removed from tracker successfully"}
+        return {"coin_id": coin_id, "message": "Coin removed from tracker successfully"}
     except Exception as e:
         con.close()
         data = {"status": "failed", "message": str(e)}
@@ -377,7 +401,7 @@ def getTrackedCoin(req: Request):
         WHERE users.id = ?    
         """
         cur.execute(query, (user_id,))
-        rows = cur.fetchall()       
+        rows = cur.fetchall()
         result = [
             {"coin_id": row[5], "coin_name": row[0], "coin_shortName": row[1],
                 "coin_priceUsd": row[2], "coin_priceIdr": row[3], "coin_rank": row[4]}

@@ -83,7 +83,7 @@ Prioritize running this test before engaging in any transactions, as it specific
 
 1. **Login Endpoint (/login):**
 
-   To authenticate, users need to provide their credentials (username and password) through the `/login` endpoint.
+   To authenticate, users need to provide their credentials (email and password) through the `/login` endpoint.
 
    ```bash
    POST /login
@@ -92,13 +92,13 @@ Prioritize running this test before engaging in any transactions, as it specific
     Request Body
     
     {
-      "username": "your_username",
+      "email": "your_email",
       "password": "your_password"
     }
     Response
     {
       "message": "login successfull",
-      "username": "your_username",
+      "email": "your_email",
       "token": "your_generated_jwt_token"
     }
     
@@ -118,7 +118,7 @@ Prioritize running this test before engaging in any transactions, as it specific
     POST /logout
     Response:
     {
-      "username": "your_username",
+      "email": "your_email",
       "message": "logout successfull",
       "token": ""
     }
@@ -146,7 +146,7 @@ The application initializes a SQLite database named `tracker_coin.db` with three
 - **Description**: Logs in a user and returns an access token.
 - Example 
     ```
-    http --json POST http://localhost:8000/login username=your_username password=your_password
+    http --json POST http://localhost:8000/login email=your_email password=your_password
 
 
 ### **Register**
@@ -155,7 +155,7 @@ The application initializes a SQLite database named `tracker_coin.db` with three
 - **Description**: Registers a new user and returns an access token.
 - Example 
     ```
-    http --json POST http://localhost:8000/register username=your_username password=your_password
+    http --json POST http://localhost:8000/register email=your_email password=your_password password_confirmation=your_password 
 
 
 ### **Logout**
