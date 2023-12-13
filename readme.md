@@ -15,7 +15,7 @@
   - [Register](#register)
   - [Logout](#logout)
 - [Protected Routes](#protected-routes)
-  - [Add Coin To Track](#add-tracked-coin)
+  - [Add Coin To Track](#add-coin-to-track)
   - [Get Tracked Coins](#get-tracked-coins)
   - [Remove Tracked Coin](#remove-tracked-coin)
 - [Try it Live](#try-it-live)
@@ -168,7 +168,7 @@ The application initializes a SQLite database named `tracker_coin.db` with three
 
 
 ## Protected Routes (Authenticated User Only)
-### **Add Coin To Track**
+### Add Coin To Track
 - **Route**: /add-coin-track
 - **Method**: POST
 - **Description**: Adds a tracked coin to a user's list.
@@ -185,7 +185,7 @@ The application initializes a SQLite database named `tracker_coin.db` with three
     ```
     http --json GET http://localhost:8000/coin-track "Authorization: Bearer your_generated_jwt_token"
     
-### Remove Tracked Coins
+### Remove Tracked Coin
 - **Route**: /remove-coin-track
 - **Method**: POST
 - **Description**: Remove a tracked coin from a user's list.
