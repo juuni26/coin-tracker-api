@@ -5,7 +5,7 @@
 - [Introduction](#introduction)
 - [Installation](#installation)
 - [Testing Application](#testing-application)
-- [How Authentication Works](#how-authentication-work)
+- [How Authentication Works](#how-authentication-works)
 - [Database Initialization](#database-initialization)
 - [General Routes](#general-routes)
   - [Update Coins](#update-coins)
