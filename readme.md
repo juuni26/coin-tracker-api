@@ -1,4 +1,4 @@
-# Tracker Coin FastAPI Documentation
+# Coin Tracker API Documentation
 
 # Table of Contents
 
