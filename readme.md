@@ -31,12 +31,18 @@ This FastAPI application, crafted in Python 3.11.5, offers a straightforward API
    ```bash
    git clone <repository_url>
 
-2. Create a virtual environment:
+2.  Install required system dependencies and packages:
+    
+    ```bash
+    sudo apt update
+    sudo apt install -y python3.11 python3.11-venv
+
+3. Create a virtual environment:
 
     ```bash
     python -m venv venv
 
-3. Activate the virtual environment:
+4. Activate the virtual environment:
 
     - Windows:
 
@@ -47,17 +53,17 @@ This FastAPI application, crafted in Python 3.11.5, offers a straightforward API
         ```bash
         source venv/bin/activate
         
-3. Install the required packages:
+5. Install the required packages:
 
     ```bash
     pip install -r requirements.txt
 
-4. Create a .env file and set your environment variables:
+6. Create a .env file and set your environment variables:
 
     ```env
     JWT_SECRET_KEY=your_secret_key
     
-5. Run the FastAPI application:
+7. Run the FastAPI application:
 
     ```bash
     uvicorn main:app --reload
