@@ -1,0 +1,272 @@
+{
+	"info": {
+		"_postman_id": "372db76f-10ad-43e2-a0aa-10284e9c65af",
+		"name": "Coin-Tracker-API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "12426846",
+		"_collection_link": "https://www.postman.com/straightforward/workspace/prestisa-x-customer/collection/12426846-372db76f-10ad-43e2-a0aa-10284e9c65af?action=share&source=collection_link&creator=12426846"
+	},
+	"item": [
+		{
+			"name": "Get Coin List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://167.172.65.57:8000/coins",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"coins"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Coin List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://167.172.65.57:8000/coins-update",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"coins-update"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "User Register",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"username\":\"test\",\r\n    \"password\":\"test\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://167.172.65.57:8000/register",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"register"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "User Login",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"username\":\"test\",\r\n    \"password\":\"test\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://167.172.65.57:8000/login",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"login"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "User Logout",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwidXNlcl9pZCI6MSwiZXhwIjoxNzAyNDcyMzcwfQ.DJJACkvwRHqgYwwNQlQ5aQr3dmv6nKvBUQ1Eirccr-g",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://167.172.65.57:8000/logout",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"logout"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Add Coin To Track",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwidXNlcl9pZCI6MSwiZXhwIjoxNzAyNDcyMzcwfQ.DJJACkvwRHqgYwwNQlQ5aQr3dmv6nKvBUQ1Eirccr-g",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"coin_id\":1\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://167.172.65.57:8000/add-coin-track",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"add-coin-track"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Tracked Coin",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwidXNlcl9pZCI6MSwiZXhwIjoxNzAyNDcyMzcwfQ.DJJACkvwRHqgYwwNQlQ5aQr3dmv6nKvBUQ1Eirccr-g",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://167.172.65.57:8000/coin-track",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"coin-track"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Remove Tracked Coin",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwidXNlcl9pZCI6MSwiZXhwIjoxNzAyNDcyMzcwfQ.DJJACkvwRHqgYwwNQlQ5aQr3dmv6nKvBUQ1Eirccr-g",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"coin_id\":1\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://167.172.65.57:8000/remove-coin-track",
+					"protocol": "http",
+					"host": [
+						"167",
+						"172",
+						"65",
+						"57"
+					],
+					"port": "8000",
+					"path": [
+						"remove-coin-track"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
