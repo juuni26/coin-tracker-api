@@ -4,7 +4,6 @@
 
 - [Introduction](#introduction)
 - [Installation](#installation)
-- [JWT Token Configuration](#jwt-token-configuration)
 - [Testing Application](#testing)
 - [How Authentication Works](#how-auth-work)
 - [Database Initialization](#database-initialization)
@@ -69,11 +68,6 @@ This FastAPI application, crafted in Python 3.11.5, offers a straightforward API
     ```bash
     uvicorn main:app --reload
 
-
-## JWT Token Configuration
-- **SECRET_KEY**: The secret key used for JWT token encoding and decoding.
-- **ALGORITHM**: The algorithm used for JWT token encoding.
-- **ACCESS_TOKEN_EXPIRE_MINUTES**: The expiration time for access tokens in minutes.
 
 ## **Testing Application**
 
