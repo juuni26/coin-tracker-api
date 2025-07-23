@@ -194,9 +194,9 @@ The application initializes a SQLite database named `tracker_coin.db` with three
     http --json POST http://localhost:8000/remove-coin-track "Authorization: Bearer your_generated_jwt_token" coin_id=coin_id_you_wanna_remove 
 
 
-## **Try It Live**
+## **Try It Live** (sorry outdated, hosting expired )
 
-you can try out it's live : http://167.172.65.57:8000
+you can try out it's live : http://167.172.65.57:8000 
     
 example: 
     
