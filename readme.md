@@ -7,7 +7,7 @@
 > | [`tier-0-original`](../../tree/tier-0-original) | The realistic "before" — single 417-line `main.py` |
 > | [`tier-1-resource-based`](../../tree/tier-1-resource-based) | Resource-based routers, REST verbs, Pydantic response models |
 > | [`tier-2-layered`](../../tree/tier-2-layered) | SQLAlchemy 2.0, Alembic, repository + service layers |
-> | [`tier-3-production`](../../tree/tier-3-production) ← *you are here* | Async SQLAlchemy + Postgres, refresh tokens, rate limiting, Railway |
+> | [`main`](../../tree/main) = [`tier-3-production`](../../tree/tier-3-production) | Async SQLAlchemy + Postgres, refresh tokens, rate limiting, Railway |
 
 ## What tier 3 actually buys you
 
