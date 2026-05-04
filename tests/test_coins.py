@@ -1,18 +1,18 @@
-def test_health(client):
-    response = client.get("/health")
+async def test_health(client):
+    response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_list_coins_empty(client):
-    response = client.get("/coins")
+async def test_list_coins_empty(client):
+    response = await client.get("/coins")
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_list_coins_returns_seeded(client, seed_coin):
-    seed_coin()
-    response = client.get("/coins")
+async def test_list_coins_returns_seeded(client, seed_coin):
+    await seed_coin()
+    response = await client.get("/coins")
     assert response.status_code == 200
     body = response.json()
     assert len(body) == 1

@@ -1,19 +1,34 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.exceptions import DomainError
+from app.rate_limit import limiter
 from app.routers import auth, coins, portfolio
 
 
 app = FastAPI(
-    title="Coin Tracker API — Tier 2 (Layered + ORM)",
+    title="Coin Tracker API — Tier 3 (Production)",
     description=(
         "Teaching example: FastAPI evolution across tiers. "
-        "Tier 2 introduces SQLAlchemy 2.0, Alembic migrations, and "
-        "repository + service layers. External API contract is identical to tier 1."
+        "Tier 3 is the production target — async SQLAlchemy, Postgres-ready, "
+        "refresh-token rotation, rate limiting, provider abstraction, and a "
+        "Railway deploy config."
     ),
-    version="2.0.0-tier2",
+    version="3.0.0-tier3",
 )
+
+# Rate limiting (slowapi)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+
+@app.exception_handler(RateLimitExceeded)
+async def handle_rate_limit(_: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429, content={"detail": f"Rate limit exceeded: {exc.detail}"}
+    )
 
 
 @app.exception_handler(DomainError)
@@ -22,7 +37,7 @@ async def handle_domain_error(_: Request, exc: DomainError) -> JSONResponse:
 
 
 @app.get("/health", tags=["meta"])
-def health() -> dict:
+async def health() -> dict:
     return {"status": "ok"}
 
 

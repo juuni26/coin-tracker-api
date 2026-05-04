@@ -2,8 +2,6 @@
 
 
 class DomainError(Exception):
-    """Base for all domain-level errors."""
-
     status_code: int = 400
     detail: str = "Domain error"
 
@@ -21,6 +19,11 @@ class EmailAlreadyRegistered(DomainError):
 class InvalidCredentials(DomainError):
     status_code = 401
     detail = "Invalid email or password"
+
+
+class InvalidRefreshToken(DomainError):
+    status_code = 401
+    detail = "Invalid or expired refresh token"
 
 
 class CoinNotFound(DomainError):

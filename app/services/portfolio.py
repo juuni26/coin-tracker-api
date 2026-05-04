@@ -1,5 +1,5 @@
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AlreadyInPortfolio, CoinNotFound, NotInPortfolio
 from app.models import PortfolioItem
@@ -10,7 +10,7 @@ from app.repositories.portfolio import PortfolioRepository
 class PortfolioService:
     def __init__(
         self,
-        db: Session,
+        db: AsyncSession,
         portfolio: PortfolioRepository,
         coins: CoinRepository,
     ) -> None:
@@ -18,26 +18,28 @@ class PortfolioService:
         self.portfolio = portfolio
         self.coins = coins
 
-    def list_for_user(self, user_id: int) -> list[PortfolioItem]:
-        return self.portfolio.list_for_user(user_id)
+    async def list_for_user(self, user_id: int) -> list[PortfolioItem]:
+        return await self.portfolio.list_for_user(user_id)
 
-    def add(self, user_id: int, coin_id: int) -> PortfolioItem:
-        if self.coins.get(coin_id) is None:
+    async def add(self, user_id: int, coin_id: int) -> PortfolioItem:
+        if await self.coins.get(coin_id) is None:
             raise CoinNotFound()
-        if self.portfolio.get(user_id, coin_id) is not None:
+        if await self.portfolio.get(user_id, coin_id) is not None:
             raise AlreadyInPortfolio()
         try:
-            item = self.portfolio.add(user_id, coin_id)
-            self.db.commit()
+            await self.portfolio.add(user_id, coin_id)
+            await self.db.commit()
         except IntegrityError:
-            self.db.rollback()
+            await self.db.rollback()
             raise AlreadyInPortfolio()
-        # Reload with coin relationship for the response
-        return self.portfolio.get(user_id, coin_id)  # type: ignore[return-value]
 
-    def remove(self, user_id: int, coin_id: int) -> None:
-        deleted = self.portfolio.remove(user_id, coin_id)
+        item = await self.portfolio.get(user_id, coin_id)
+        assert item is not None
+        return item
+
+    async def remove(self, user_id: int, coin_id: int) -> None:
+        deleted = await self.portfolio.remove(user_id, coin_id)
         if not deleted:
-            self.db.rollback()
+            await self.db.rollback()
             raise NotInPortfolio()
-        self.db.commit()
+        await self.db.commit()

@@ -6,8 +6,18 @@ from sqlalchemy import engine_from_config, pool
 from app.config import settings
 from app.models import Base
 
+
+def _to_sync_url(async_url: str) -> str:
+    """Alembic uses a sync engine; convert async dialect URLs back to sync."""
+    return (
+        async_url.replace("+asyncpg", "")
+        .replace("+aiosqlite", "")
+        .replace("postgresql+psycopg", "postgresql")
+    )
+
+
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", _to_sync_url(settings.DATABASE_URL))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -17,7 +27,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.DATABASE_URL,
+        url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},

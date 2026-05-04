@@ -16,10 +16,11 @@ def _to_response(item) -> PortfolioItemResponse:
 
 
 @router.get("", response_model=list[PortfolioItemResponse])
-def list_portfolio(
+async def list_portfolio(
     user: CurrentUserDep, service: PortfolioServiceDep
 ) -> list[PortfolioItemResponse]:
-    return [_to_response(item) for item in service.list_for_user(user.id)]
+    items = await service.list_for_user(user.id)
+    return [_to_response(item) for item in items]
 
 
 @router.post(
@@ -27,18 +28,18 @@ def list_portfolio(
     response_model=PortfolioItemResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def add_to_portfolio(
+async def add_to_portfolio(
     payload: PortfolioAddRequest,
     user: CurrentUserDep,
     service: PortfolioServiceDep,
 ) -> PortfolioItemResponse:
-    item = service.add(user.id, payload.coin_id)
+    item = await service.add(user.id, payload.coin_id)
     return _to_response(item)
 
 
 @router.delete("/{coin_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remove_from_portfolio(
+async def remove_from_portfolio(
     coin_id: int, user: CurrentUserDep, service: PortfolioServiceDep
 ) -> Response:
-    service.remove(user.id, coin_id)
+    await service.remove(user.id, coin_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

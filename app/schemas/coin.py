@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -17,4 +16,4 @@ class CoinResponse(BaseModel):
 
 class CoinRefreshResponse(BaseModel):
     refreshed_count: int
-    source: Literal["coingecko"] = "coingecko"
+    source: str

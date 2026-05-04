@@ -1,169 +1,160 @@
-# Coin Tracker API — Tier 2: Layered Architecture + ORM
+# Coin Tracker API — Tier 3 (Production)
 
-> Part of a 3-tier teaching series. Follow the branches to watch a FastAPI codebase grow up.
+> Final tier of a 3-tier teaching series. Async SQLAlchemy, Postgres-ready, refresh-token rotation, rate limiting, provider abstraction, Railway deploy.
 >
 > | Branch | What you learn |
 > |---|---|
-> | [`tier-0-original`](../../tree/tier-0-original) | The realistic "before" — single 417-line `main.py`, raw SQL, mixed concerns |
+> | [`tier-0-original`](../../tree/tier-0-original) | The realistic "before" — single 417-line `main.py` |
 > | [`tier-1-resource-based`](../../tree/tier-1-resource-based) | Resource-based routers, REST verbs, Pydantic response models |
-> | [`tier-2-layered`](../../tree/tier-2-layered) ← *you are here* | SQLAlchemy 2.0, Alembic, repository + service layers, domain exceptions |
-> | `main` (tier 3) *(coming)* | Async SQLAlchemy, Postgres, refresh tokens, rate limiting, CI, Railway deploy |
+> | [`tier-2-layered`](../../tree/tier-2-layered) | SQLAlchemy 2.0, Alembic, repository + service layers |
+> | [`tier-3-production`](../../tree/tier-3-production) ← *you are here* | Async SQLAlchemy + Postgres, refresh tokens, rate limiting, Railway |
 
-## The headline lesson of tier 2
+## What tier 3 actually buys you
 
-**Run `pytest` after this refactor and every test still passes — unchanged.** The internal architecture of the API was overhauled (raw SQL → ORM, monolithic handlers → repos + services + domain exceptions, ad-hoc schema → Alembic-managed migrations), but the external HTTP contract is byte-for-byte identical.
+Tier 1 was *organize*. Tier 2 was *layer*. Tier 3 is *make it production-grade.* The goal is a service you would not be embarrassed to run for real users — and the lessons are the things tutorials usually skip.
 
-That is the whole point of layering: **clients should not be able to tell when you re-architect**. If your tests had to be rewritten, your "layers" leaked.
+## What changed from tier 2
 
-## What changed from tier 1
+### 1. Async everywhere
 
-### 1. SQLAlchemy 2.0 ORM (sync)
-
-Tier 1's raw SQL lives directly inside route handlers. Tier 2 introduces declarative models with the modern `Mapped[]` / `mapped_column(...)` syntax:
+Every layer is now `async`/`await`:
 
 ```python
-class User(Base):
-    __tablename__ = "users"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    portfolio_items: Mapped[list["PortfolioItem"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
+# repositories/user.py
+async def get_by_email(self, email: str) -> User | None:
+    result = await self.db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+
+# services/auth.py
+async def authenticate(self, email: str, password: str) -> TokenPair: ...
+
+# routers/auth.py
+@router.post("/login")
+async def login(...): ...
 ```
 
-Note: **sync**, not async. Async is tier 3's lesson — don't bundle two big concepts into one branch.
+The DB engine is `create_async_engine`, the session is `AsyncSession`, and the request lifecycle is async end-to-end. Why does this matter? **Concurrency under load.** A sync FastAPI worker blocks on every DB call; an async worker frees the event loop to serve other requests during I/O waits. Same hardware, several times the throughput.
 
-### 2. Alembic migrations
+### 2. Postgres-ready (with SQLite for local dev)
 
-The tier-1 `init_db()` function (which called `CREATE TABLE IF NOT EXISTS` at app startup) is **gone**. Schema is now owned by Alembic:
+`DATABASE_URL` is the single knob:
+
+| Environment | URL |
+|---|---|
+| Local dev | `sqlite+aiosqlite:///./tracker_coin.db` |
+| Railway / prod | `postgresql+asyncpg://...` (Railway sets this when you attach a Postgres add-on) |
+
+The app **normalizes** Heroku/Railway-style `postgres://` → `postgresql+asyncpg://` automatically (`app/config.py:_normalize_database_url`). Tests still use SQLite for speed; the production deploy uses Postgres without code changes.
+
+The same Alembic migrations run against both — no separate "sqlite migration" and "postgres migration."
+
+### 3. Refresh-token rotation
+
+This is the auth feature most tutorials skip. Tier 3 issues **two** tokens per session:
+
+| Token | What it is | Lifetime | Stored where |
+|---|---|---|---|
+| Access | JWT, stateless | 15 min | Client memory |
+| Refresh | Random opaque string, rotated on use | 14 days | Client + `refresh_tokens` table (hashed) |
+
+Flow:
+
+1. `POST /auth/register` or `/auth/login` → returns `{access_token, refresh_token}`
+2. When access expires, client calls `POST /auth/refresh` with the refresh token
+3. Server **revokes** the old refresh token and issues a fresh pair (access + refresh)
+4. `POST /auth/logout` revokes the refresh token (logout now actually does something on the server)
+
+Why rotate? If a refresh token leaks, an attacker can use it once — but then either the user's next refresh fails (detection signal) or the attacker keeps refreshing and the user's next refresh fails. Either way, you find out. Without rotation, a leaked refresh token is good for 14 days, silently.
+
+We store `sha256(token)` not the raw value — so a DB read does not yield usable tokens.
+
+### 4. Provider abstraction (`PriceProvider` Protocol)
+
+Tier 1 swapped CoinCap for CoinGecko in a single file. Tier 3 introduces a **Protocol** so swapping is one config change:
+
+```python
+# providers/base.py
+class PriceProvider(Protocol):
+    name: str
+    async def fetch_market_coins(self) -> list[MarketCoin]: ...
+
+# providers/factory.py
+def get_price_provider() -> PriceProvider:
+    if settings.COINCAP_API_KEY:
+        return CoinCapProvider()    # paid, more reliable
+    return CoinGeckoProvider()      # keyless, free tier
+```
+
+The service receives a `PriceProvider` via dependency injection; it does not know or care which one. Adding a third provider (CryptoCompare, Binance, etc.) is one new file.
+
+### 5. Rate limiting on auth endpoints
+
+Brute-force is the #1 way poorly-deployed APIs get owned. Tier 3 adds [slowapi](https://github.com/laurentS/slowapi) per-IP limits:
+
+| Endpoint | Limit |
+|---|---|
+| `POST /auth/register` | 3 / minute |
+| `POST /auth/login` | 5 / minute |
+| `POST /auth/refresh` | 10 / minute |
+
+Limits are skipped in tests via `RATE_LIMIT_ENABLED=false` so the suite stays fast and deterministic.
+
+### 6. Railway deploy config
+
+Three files:
+
+- **`Procfile`** — `release` runs `alembic upgrade head` before each deploy, `web` boots uvicorn on `$PORT`
+- **`railway.json`** — health check at `/health`, restart policy, start command (Postgres-ready)
+- **`runtime.txt`** — pins Python 3.12 for predictable nixpacks builds
+
+Deploy steps:
 
 ```bash
-alembic upgrade head     # apply all migrations
-alembic downgrade -1     # roll back one
-alembic revision --autogenerate -m "add foo column"   # after editing models
+# In Railway dashboard:
+# 1. New Project → Deploy from GitHub repo → pick this branch
+# 2. Add a Postgres plugin → Railway auto-injects DATABASE_URL
+# 3. Add env vars: JWT_SECRET_KEY (long random), RATE_LIMIT_ENABLED=true
+# 4. Deploy. Migrations run automatically via the Procfile release step.
 ```
 
-The initial migration (`alembic/versions/0001_initial_schema.py`) creates the same schema tier 1 had. From tier 2 onward, every schema change is a code-reviewed, version-controlled migration file.
+That's it. The `_normalize_database_url` helper makes Railway's `postgres://...` value work without manual edits.
 
-### 3. Repository layer (`app/repositories/`)
-
-Pure data access. Each repository takes a `Session` and exposes a small focused API:
-
-```python
-class UserRepository:
-    def get_by_email(self, email: str) -> User | None
-    def get(self, user_id: int) -> User | None
-    def create(self, *, email: str, password_hash: str) -> User
-```
-
-Repositories know about ORM models. They do **not** know about HTTP, FastAPI, Pydantic, or business rules.
-
-### 4. Service layer (`app/services/`)
-
-Business logic. Services receive repositories via the constructor and orchestrate them:
-
-```python
-class AuthService:
-    def register(self, email: str, password: str) -> User:
-        if self.users.get_by_email(email) is not None:
-            raise EmailAlreadyRegistered()
-        user = self.users.create(email=email, password_hash=hash_password(password))
-        self.db.commit()
-        return user
-```
-
-Services raise **domain exceptions**, never `HTTPException`. This makes them reusable from CLI scripts, background workers, or tests — none of which know what HTTP is.
-
-### 5. Domain exceptions (`app/exceptions.py`)
-
-A small hierarchy under `DomainError`:
-
-| Exception | HTTP | Detail |
-|---|---|---|
-| `EmailAlreadyRegistered` | 409 | Email already registered |
-| `InvalidCredentials` | 401 | Invalid email or password |
-| `CoinNotFound` | 404 | Coin not found |
-| `AlreadyInPortfolio` | 409 | Coin already in portfolio |
-| `NotInPortfolio` | 404 | Coin not in portfolio |
-| `ProviderUnavailable` | 502 | Upstream price provider failed |
-
-Translation happens in **one place** — a single exception handler in `app/main.py`:
-
-```python
-@app.exception_handler(DomainError)
-async def handle_domain_error(_: Request, exc: DomainError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-```
-
-### 6. Routers shrink to almost nothing
-
-Compare tier 1's `add_to_portfolio` (~25 lines of SQL + checks + raises) to tier 2:
-
-```python
-@router.post("", response_model=PortfolioItemResponse, status_code=201)
-def add_to_portfolio(
-    payload: PortfolioAddRequest,
-    user: CurrentUserDep,
-    service: PortfolioServiceDep,
-) -> PortfolioItemResponse:
-    item = service.add(user.id, payload.coin_id)
-    return _to_response(item)
-```
-
-That's the goal: **routers parse, services decide, repositories persist**.
-
-### 7. DB session as a dependency
-
-```python
-DbDep = Annotated[Session, Depends(get_db)]
-
-def get_auth_service(db: DbDep) -> AuthService:
-    return AuthService(db, UserRepository(db))
-
-AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
-```
-
-Wiring lives in `deps.py`. Routers stay declarative. Testing a service in isolation = pass a mock `Session`, no FastAPI involved.
-
-## Folder layout (additions over tier 1)
+## Folder layout (additions over tier 2)
 
 ```
 app/
-├── exceptions.py         # NEW: DomainError + concrete subclasses
-├── db.py                 # REWRITTEN: SQLAlchemy engine + SessionLocal + get_db()
-├── deps.py               # + DbDep + service factories
-├── main.py               # + DomainError exception handler; init_db lifespan removed
-├── models/               # NEW: SQLAlchemy 2.0 declarative models
-│   ├── base.py
-│   ├── user.py
-│   ├── coin.py
-│   └── portfolio.py
-├── repositories/         # NEW: pure data access
-│   ├── user.py
-│   ├── coin.py
-│   └── portfolio.py
-├── services/             # NEW: business logic
-│   ├── auth.py
-│   ├── coin.py
-│   └── portfolio.py
-└── routers/...           # SHRUNK: 5–8 lines per handler
-alembic/
-├── env.py                # reads DATABASE_URL from app.config
-└── versions/0001_initial_schema.py
-alembic.ini
+├── rate_limit.py             # NEW: slowapi Limiter
+├── providers/
+│   ├── base.py               # NEW: PriceProvider Protocol + MarketCoin
+│   ├── factory.py            # NEW: pick provider by config
+│   ├── coingecko.py          # async (httpx.AsyncClient)
+│   └── coincap.py            # NEW: alt provider, requires API key
+├── models/
+│   └── refresh_token.py      # NEW
+├── repositories/
+│   └── refresh_token.py      # NEW
+├── services/auth.py          # rewritten: refresh + rotation + logout-revoke
+├── schemas/auth.py           # + RefreshRequest, LogoutRequest, refresh_token field
+├── routers/auth.py           # + /auth/refresh; rate-limited
+├── main.py                   # + slowapi middleware + 429 handler
+└── db.py                     # async engine + AsyncSession
+alembic/versions/
+└── 0002_refresh_tokens.py    # NEW
+Procfile                      # NEW (Railway release + web)
+railway.json                  # NEW
+runtime.txt                   # NEW (Python 3.12)
+pytest.ini                    # NEW (asyncio_mode = auto)
 ```
 
-## Run it
+## Run it locally
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env                 # set JWT_SECRET_KEY
 
-alembic upgrade head      # create the schema
+alembic upgrade head                  # apply migrations to local sqlite
 uvicorn app.main:app --reload
 ```
 
@@ -175,29 +166,61 @@ Open http://localhost:8000/docs.
 pytest -v
 ```
 
-The same 17 tests from tier 1 pass on tier 2 with **zero edits**. Tests use `Base.metadata.create_all(engine)` against a tmp SQLite file — fast, deterministic, no Alembic needed for the test path. Alembic is for production schema management.
+**18 async tests, all green.** Includes refresh-token rotation, revocation, and rate-limit-disabled coverage.
+
+## Try the flow
+
+```bash
+# Populate coins (uses CoinGecko by default; CoinCap if COINCAP_API_KEY is set)
+curl -X POST http://localhost:8000/coins/refresh
+
+# Register — returns access_token + refresh_token
+curl -X POST http://localhost:8000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"secret123","password_confirmation":"secret123"}'
+
+ACCESS=...   # from response
+REFRESH=...
+
+# Use access token
+curl -X POST http://localhost:8000/portfolio \
+  -H "Authorization: Bearer $ACCESS" \
+  -H 'Content-Type: application/json' \
+  -d '{"coin_id":1}'
+
+# Rotate when access expires (15 min)
+curl -X POST http://localhost:8000/auth/refresh \
+  -H 'Content-Type: application/json' \
+  -d "{\"refresh_token\":\"$REFRESH\"}"
+
+# Logout — actually revokes the refresh token server-side
+curl -X POST http://localhost:8000/auth/logout \
+  -H 'Content-Type: application/json' \
+  -d "{\"refresh_token\":\"$REFRESH\"}"
+```
 
 ## Design decisions worth knowing
 
-1. **Why repositories *and* services?** Repos answer "how do I store/retrieve this row?" Services answer "what does the business want to happen?" Mixing them puts SQL next to password hashing, and you can never test one without the other. With separation, services can be unit-tested with a fake repository — no DB needed.
+1. **Why store refresh tokens hashed?** A database read should not be a security incident. With SHA-256 hashing, an attacker who dumps the table cannot replay sessions. Same logic as password hashing.
 
-2. **Why sync SQLAlchemy in tier 2?** Async adds a second axis of complexity (event loop, `await` everywhere, async test fixtures, async session). Tier 2's lesson is *layering*; tier 3's lesson is *async + Postgres*. Mixing both into tier 2 muddies which technique solves which problem.
+2. **Why JWT for access, opaque for refresh?** JWTs are great for stateless verification (every request) and bad for revocation (you can't take one back). Refresh tokens need server-side state for revocation, so they are opaque random strings backed by a row in `refresh_tokens`. Use the right tool for each purpose.
 
-3. **Why Alembic now?** Tier 1's `init_db()` was a teaching shortcut — fine for one schema, fatal once you ship. Alembic forces students to learn migrations *before* they have a production DB to break. The first migration is the safety net for everything that follows.
+3. **Why async if SQLite is sync underneath?** `aiosqlite` runs SQLite operations on a thread pool; the FastAPI handler still gets to await without blocking. In production you swap to `asyncpg` (truly async) and gain real throughput. Same code path.
 
-4. **Why domain exceptions, not HTTPException?** Services should be reusable from CLI scripts, background workers, tests — none of which know what HTTP is. Pushing HTTP awareness to a single exception handler keeps the domain layer portable. If you ever expose the same logic over gRPC or a CLI, only the handler changes.
+4. **Why a Protocol instead of an abstract base class?** PEP 544 structural typing — `CoinGeckoProvider` and `CoinCapProvider` don't need to inherit from anything. Any class with the right shape *is* a `PriceProvider`. Easier to mock in tests, easier to add new providers without touching base classes.
 
-5. **Why `Base.metadata.create_all` in tests but Alembic in production?** Alembic per test is slow and overkill — its job is *managing change over time*, not bootstrapping from empty. Tests want a clean slate every run; production wants reproducible upgrades. Different tools for different jobs.
+5. **Why does `/auth/logout` need the refresh token?** Because logout that does nothing on the server (tier 2's behavior) is a lie. Revoking the token is the difference between "we told the client to forget" and "this session is actually over."
 
-6. **Why `service.commit()` and not the route handler?** A unit of work is a *business operation*, not an HTTP request. Today they map 1:1; tomorrow a service may run two sub-operations in one transaction or call another service. Keeping commits inside services makes that future trivial.
+6. **Why the `release: alembic upgrade head` step?** Schema changes must run *before* the new code starts handling traffic. Putting migrations in the release phase guarantees this — the new web process only boots after the DB is on the right version.
 
-## What tier 3 will add
+7. **Why does the test suite still work without Postgres?** Because the abstraction is the dialect, not the engine. SQLAlchemy 2.0 + Alembic generate dialect-appropriate SQL automatically. We test the contract; production exercises the dialect-specific paths.
 
-- **Async SQLAlchemy** + Postgres on Railway (via `DATABASE_URL`)
-- **Refresh tokens** + token rotation (the #1 thing junior devs get wrong)
-- **Rate limiting** on auth endpoints
-- **Structured logging** + request IDs
-- **CI pipeline** running pytest + alembic check on every PR
-- **Provider abstraction** — `PriceProvider` protocol, with both CoinGecko and CoinCap (opt-in via API key) implementations
+## What this series covered (tier 0 → 3)
 
-The contract still won't change. Diff `tier-2...main` to see what production-grade FastAPI actually looks like.
+- Tier 0 → 1: separate concerns, fix REST verbs, add response models, swap a dead provider
+- Tier 1 → 2: introduce ORM, migrations, repos, services, domain exceptions
+- Tier 2 → 3: go async, add Postgres support, rotate refresh tokens, rate-limit auth, abstract providers, deploy to Railway
+
+Same coin tracker. Same external API contract (one additive change: `refresh_token` in tier 3 responses). Three branches' worth of progressively production-grade lessons.
+
+If this is your first FastAPI codebase, **diff the branches in order** — that is the lesson. The code is just the artifact.

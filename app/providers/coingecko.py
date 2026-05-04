@@ -1,20 +1,9 @@
-from dataclasses import dataclass
 from datetime import datetime
 
 import httpx
 
 from app.config import settings
-
-
-@dataclass(frozen=True)
-class MarketCoin:
-    external_id: str
-    name: str
-    symbol: str
-    market_cap_rank: int | None
-    price_usd: float
-    image_url: str | None
-    last_updated: datetime
+from app.providers.base import MarketCoin
 
 
 def _parse(item: dict) -> MarketCoin:
@@ -35,15 +24,21 @@ def _parse(item: dict) -> MarketCoin:
     )
 
 
-def fetch_market_coins(per_page: int = 100, page: int = 1) -> list[MarketCoin]:
-    params = {
-        "vs_currency": "usd",
-        "order": "market_cap_desc",
-        "per_page": per_page,
-        "page": page,
-        "sparkline": "false",
-    }
-    with httpx.Client(timeout=15.0) as client:
-        response = client.get(settings.COINGECKO_URL, params=params)
-        response.raise_for_status()
-        return [_parse(item) for item in response.json()]
+class CoinGeckoProvider:
+    name = "coingecko"
+
+    def __init__(self, url: str | None = None) -> None:
+        self.url = url or settings.COINGECKO_URL
+
+    async def fetch_market_coins(self, per_page: int = 100, page: int = 1) -> list[MarketCoin]:
+        params = {
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": per_page,
+            "page": page,
+            "sparkline": "false",
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(self.url, params=params)
+            response.raise_for_status()
+            return [_parse(item) for item in response.json()]
