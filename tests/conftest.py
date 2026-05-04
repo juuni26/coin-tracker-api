@@ -11,7 +11,7 @@ import pytest
 def _isolated_db(tmp_path_factory):
     """Point the app at a throwaway SQLite file for the whole test session."""
     db_file: Path = tmp_path_factory.mktemp("data") / "test.db"
-    os.environ["DB_PATH"] = str(db_file)
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
     os.environ["JWT_SECRET_KEY"] = "test-secret-key"
     yield
     if db_file.exists():
@@ -20,11 +20,16 @@ def _isolated_db(tmp_path_factory):
 
 @pytest.fixture()
 def client(_isolated_db):
+    # Import inside the fixture so env vars are set before the engine is built.
     from fastapi.testclient import TestClient
-    from app.db import init_db
-    from app.main import app
 
-    init_db()
+    from app.db import engine
+    from app.main import app
+    from app.models import Base
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
     with TestClient(app) as c:
         yield c
 
@@ -38,29 +43,24 @@ def random_credentials() -> dict:
 
 @pytest.fixture()
 def seed_coin():
-    """Insert a fake coin row directly so tests don't depend on the live CoinGecko API."""
-    from app.db import get_connection
+    """Insert a fake coin row directly via ORM so tests don't depend on CoinGecko."""
+    from app.db import SessionLocal
+    from app.models import Coin
 
     def _seed(external_id: str = "bitcoin", name: str = "Bitcoin", symbol: str = "BTC") -> int:
-        with get_connection() as con:
-            cur = con.execute(
-                """
-                INSERT INTO coins (external_id, name, symbol, market_cap_rank,
-                                   price_usd, image_url, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(external_id) DO UPDATE SET name = excluded.name
-                RETURNING id
-                """,
-                (
-                    external_id,
-                    name,
-                    symbol,
-                    1,
-                    50000.0,
-                    "https://example.com/btc.png",
-                    datetime.now(timezone.utc).isoformat(),
-                ),
+        with SessionLocal() as db:
+            coin = Coin(
+                external_id=external_id,
+                name=name,
+                symbol=symbol,
+                market_cap_rank=1,
+                price_usd=50000.0,
+                image_url="https://example.com/btc.png",
+                last_updated=datetime.now(timezone.utc),
             )
-            return cur.fetchone()[0]
+            db.add(coin)
+            db.commit()
+            db.refresh(coin)
+            return coin.id
 
     return _seed
