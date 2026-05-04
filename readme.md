@@ -1,206 +1,164 @@
-# Coin Tracker API Documentation
+# Coin Tracker API — Tier 1: Resource-Based
 
-# Table of Contents
+> Part of a 3-tier teaching series. Follow the branches to watch a FastAPI codebase grow from a 417-line `main.py` into a production-grade service.
+>
+> | Branch | What you learn |
+> |---|---|
+> | [`tier-0-original`](../../tree/tier-0-original) | The realistic "before" — single file, raw SQL, mixed concerns, GETs that mutate data. **Start here.** |
+> | [`tier-1-resource-based`](../../tree/tier-1-resource-based) ← *you are here* | Resource-based routers, REST verbs, Pydantic response models |
+> | [`tier-2-layered`](../../tree/tier-2-layered) *(coming)* | Service/repository layers, SQLAlchemy + Alembic, dependency injection for DB |
+> | `main` (tier 3) *(coming)* | Async SQLAlchemy, Postgres, refresh tokens, rate limiting, CI, Railway deploy |
 
-- [Introduction](#introduction)
-- [Installation](#installation)
-- [Testing Application](#testing-application)
-- [How Authentication Works](#how-authentication-works)
-- [Database Initialization](#database-initialization)
-- [General Routes](#general-routes)
-  - [Update Coins](#update-coins)
-  - [Get Coins](#get-coins)
-- [User Routes](#user-routes)
-  - [Login](#login)
-  - [Register](#register)
-  - [Logout](#logout)
-- [Protected Routes](#protected-routes)
-  - [Add Coin To Track](#add-coin-to-track)
-  - [Get Tracked Coins](#get-tracked-coins)
-  - [Remove Tracked Coin](#remove-tracked-coin)
-- [Try it Live](#try-it-live)
-- [Postman Docs](#postman-docs)
+## Why this branch exists
 
-## Introduction
+Tier 0 is what most real codebases look like when a tutorial-grade project starts being used in anger: one big file, raw `sqlite3` calls scattered through route handlers, `GET /coins-update` that wipes and rebuilds the database, request bodies returned as plain `dict`s, and HTTP status codes hand-rolled inside JSON bodies (`{"status_code": 400}` returned with HTTP 200).
 
-This Coin-Tracker application, crafted in Python 3.11.5 using Framework FastAPI, offers a straightforward API for efficiently managing and tracking cryptocurrency coins. Its features include easy data updates, user authentication, and personalized coin tracking.
+Tier 1 is the smallest meaningful jump: **organize the code by resource and speak HTTP correctly**. We don't introduce SQLAlchemy yet — that's tier 2's lesson. The point is that *structure comes first*, then abstractions.
 
-## Installation
+## What changed from tier 0
 
-1. Clone the repository:
+### 1. Resource-based file layout
 
-   ```bash
-   git clone <repository_url>
+```
+app/
+├── main.py              # FastAPI() + router includes (15 lines)
+├── config.py            # env loading, single Settings object
+├── db.py                # sqlite3 connection helper + schema bootstrap
+├── security.py          # password hashing + JWT encode/decode
+├── deps.py              # get_current_user dependency
+├── providers/
+│   └── coingecko.py     # external price-data provider, isolated
+├── schemas/             # Pydantic request + response models
+│   ├── auth.py
+│   ├── coin.py
+│   └── portfolio.py
+└── routers/             # one file per resource
+    ├── auth.py          # /auth/*
+    ├── coins.py         # /coins/*
+    └── portfolio.py     # /portfolio/*
+tests/
+├── conftest.py          # isolated tmp sqlite per session
+├── test_auth.py
+├── test_coins.py
+└── test_portfolio.py
+```
 
-2.  Install required system dependencies and packages:
-    
-    ```bash
-    sudo apt update
-    sudo apt install -y python3.11 python3.11-venv
+Each route file owns one resource end-to-end. `main.py` becomes an index, not a kitchen sink.
 
-3. Create a virtual environment:
+### 2. REST-correct verbs and paths
 
-    ```bash
-    python -m venv venv
+| Tier 0 (RPC-flavored) | Tier 1 (RESTful) | Why |
+|---|---|---|
+| `GET /coins-update` | `POST /coins/refresh` (202) | A GET that mutates is an anti-pattern — caches, prefetchers, and bots can fire it |
+| `GET /reset-data` | **removed** | Same problem, even more dangerous. Tests use isolated DBs instead |
+| `POST /add-coin-track` | `POST /portfolio` (201) | Resource-based collection POST |
+| `POST /remove-coin-track` | `DELETE /portfolio/{coin_id}` (204) | Path param, correct verb |
+| `GET /coin-track` | `GET /portfolio` | Plural noun for collections |
+| `POST /login` | `POST /auth/login` | Grouped under the `auth` resource |
+| `POST /register` | `POST /auth/register` (201) | Creation returns 201, not 200 |
+| `GET /` → `{"message": "Hi"}` | `GET /health` → `{"status": "ok"}` | Conventional health probe |
 
-4. Activate the virtual environment:
+### 3. Pydantic response models
 
-    - Windows:
+Tier 0 returned raw `dict`s. That means OpenAPI shows `{}` for every response and clients have no contract. Tier 1 declares `response_model=...` on every endpoint, which:
+- generates a real schema at `/docs`,
+- strips fields you forgot were in the dict (e.g. password hashes),
+- gives you free runtime validation of your own outputs.
 
-        ```bash
-        .\venv\Scripts\activate
-    
-    - Linux/macOS:
-        ```bash
-        source venv/bin/activate
-        
-5. Install the required packages:
+Request and response shapes are **separate classes** — `RegisterRequest` carries `password`; nothing in the response files does. This is how you avoid leaking sensitive fields by accident.
 
-    ```bash
-    pip install -r requirements.txt
+### 4. Status codes that mean something
 
-6. Create a .env file and set your environment variables:
+Tier 0 returned HTTP 200 with `{"status_code": 400}` in the body. Tier 1:
+- `201 Created` for register / portfolio add
+- `202 Accepted` for the refresh action
+- `204 No Content` for logout / portfolio delete
+- `401 Unauthorized` for bad credentials / missing token
+- `404 Not Found` for unknown coin / unknown portfolio item
+- `409 Conflict` for duplicate email / duplicate portfolio entry
+- `422 Unprocessable Entity` for schema validation failures (Pydantic gives this for free)
 
-    ```env
-    JWT_SECRET_KEY=your_secret_key
-    
-7. Run the Coin-Tracker application:
+### 5. CoinCap → CoinGecko
 
-    ```bash
-    uvicorn main:app --reload
+The original code called `https://api.coincap.io/v2/assets`. **That host's DNS no longer resolves** — CoinCap moved to `pro.coincap.io` with a paid API key requirement. We migrated to **CoinGecko** (`/api/v3/coins/markets`, no key needed for the public endpoint) and put it in `app/providers/coingecko.py`. Isolating external calls in a `providers/` module is what makes tier 3's `PriceProvider` protocol a one-file change later.
 
+> **Lesson:** external APIs die. Wrap them, never call `requests.get` directly from a route handler.
 
-## **Testing Application**
+### 6. Schema fixes
 
-Run ```pytest```
+The old `coins` table mixed `shortName` (camelCase) with `priceUsd`. Tier 1 standardizes on snake_case (`external_id`, `price_usd`, `market_cap_rank`, `image_url`, `last_updated`) and adds a `UNIQUE` constraint on `external_id` so refresh becomes an idempotent upsert (`INSERT ... ON CONFLICT DO UPDATE`) instead of "drop the table and re-insert everything."
 
-test case provided in the root folder `test_main.py`
+### 7. Dependency injection for the current user
 
-Prioritize running this test before engaging in any transactions, as it specifically involves updating data in the database. It should be executed first before proceeding with any other operations. 
+```python
+# app/deps.py
+CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]
 
+# app/routers/portfolio.py
+def list_portfolio(user: CurrentUserDep) -> list[PortfolioItemResponse]:
+    ...
+```
 
-## How Authentication Works 
+No more `request.state.user_id` plumbing — typed, testable, autocompleted.
 
-1. **Login Endpoint (/login):**
+### 8. Tests that actually isolate state
 
-   To authenticate, users need to provide their credentials (email and password) through the `/login` endpoint.
+Tier 0's tests ran against the live SQLite file in the repo and depended on a successful CoinCap fetch. Tier 1's `conftest.py` points the app at a throwaway DB per session and seeds coins directly, so tests are deterministic and don't need internet access.
 
-   ```bash
-   POST /login
-   
+## Run it
 
-    Request Body
-    
-    {
-      "email": "your_email",
-      "password": "your_password"
-    }
-    Response
-    {
-      "message": "login successfull",
-      "email": "your_email",
-      "token": "your_generated_jwt_token"
-    }
-    
-2. **Protected Routes**
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env                # edit JWT_SECRET_KEY
+uvicorn app.main:app --reload
+```
 
-    Once authenticated, users include the JWT token in the Authorization header using the Bearer schema for every request to protected routes.
+Open http://localhost:8000/docs for the interactive OpenAPI UI.
 
-    ```bash 
-    Authorization: Bearer your_generated_jwt_token
+## Test it
 
-3. **Logout Endpoint (/logout):**
+```bash
+pytest -v
+```
 
+17 tests, no network required.
 
-    Logging out is handled on the client side. The **/logout** endpoint does not require any authentication since the application is stateless in the backend. Users can clear the JWT token from their client, effectively logging them out.
+## Try the flow
 
-    ```
-    POST /logout
-    Response:
-    {
-      "email": "your_email",
-      "message": "logout successfull",
-      "token": ""
-    }
+```bash
+# Populate the local DB from CoinGecko (one-time, before adding to portfolio)
+curl -X POST http://localhost:8000/coins/refresh
 
-## Database Initialization
-The application initializes a SQLite database named `tracker_coin.db` with three tables: `users`, `coins`, and `user_coins`. These tables store user information, coin data, and the relationships between users and tracked coins.
+# Register
+curl -X POST http://localhost:8000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"secret123","password_confirmation":"secret123"}'
 
-## General Routes
+# Use the access_token from the response above
+TOKEN=...
 
-### **Update Coins**
-- **Route**: /coins-update
-- **Method**: GET
-- **Description**: Updates the `coins` table with the latest data from the CoinCap API.
+# Add a coin (id=1 is the top-ranked one from your refresh)
+curl -X POST http://localhost:8000/portfolio \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"coin_id":1}'
 
-### **Get Coins**
-- **Route**: /coins
-- **Method**: GET
-- **Description**: Retrieves all coins from the `coins` table.
+# List your portfolio
+curl http://localhost:8000/portfolio -H "Authorization: Bearer $TOKEN"
+```
 
-## **User Routes**
+## What tier 2 will add
 
-### **Login**
-- **Route**: /login
-- **Method**: POST
-- **Description**: Logs in a user and returns an access token.
-- Example 
-    ```
-    http --json POST http://localhost:8000/login email=your_email password=your_password
+- Replace raw SQL with **SQLAlchemy 2.0** models + **Alembic** migrations
+- Introduce a **service layer** (business logic) and **repository layer** (data access) so handlers are 5 lines each
+- Database session as a FastAPI **dependency** (`Depends(get_db)`), not a context manager inside the handler
+- Same API contract — only internals change. Diff `tier-1...tier-2` to see exactly what an ORM buys you.
 
+## Design decisions worth knowing
 
-### **Register**
-- **Route**: /register
-- **Method**: POST
-- **Description**: Registers a new user and returns an access token.
-- Example 
-    ```
-    http --json POST http://localhost:8000/register email=your_email password=your_password password_confirmation=your_password 
-
-
-### **Logout**
-- **Route**: /logout
-- **Method**: POST
-- **Description**: Logs out a user.
-- Example 
-    ```
-    http --json POST http://localhost:8000/logout "Authorization: Bearer your_generated_jwt_token"
-
-
-## Protected Routes (Authenticated User Only)
-### Add Coin To Track
-- **Route**: /add-coin-track
-- **Method**: POST
-- **Description**: Adds a tracked coin to a user's list.
-- Example 
-    ```
-    http --json POST http://localhost:8000/add-coin-track "Authorization: Bearer your_generated_jwt_token" coin_id=coin_id_you_wanna_track
-
-
-### Get Tracked Coins
-- **Route**: /coin-track
-- **Method**: GET
-- **Description**: Retrieves all tracked coins for a user.
-- Example 
-    ```
-    http --json GET http://localhost:8000/coin-track "Authorization: Bearer your_generated_jwt_token"
-    
-### Remove Tracked Coin
-- **Route**: /remove-coin-track
-- **Method**: POST
-- **Description**: Remove a tracked coin from a user's list.
-- Example 
-    ```
-    http --json POST http://localhost:8000/remove-coin-track "Authorization: Bearer your_generated_jwt_token" coin_id=coin_id_you_wanna_remove 
-
-
-## **Try It Live** (sorry outdated, hosting expired )
-
-you can try out it's live : http://167.172.65.57:8000 
-    
-example: 
-    
-    http get http://167.172.65.57:8000/coins
-
-## **Postman Docs**
-You can export collection to Postman from file `Coin-Tracker-API.postman_collection.json`
+1. **Why no SQLAlchemy here?** Premature abstraction. You can't appreciate what an ORM solves until you've felt the pain of raw SQL spread across handlers. Tier 1 is that pain in a contained form.
+2. **Why `Annotated[..., Depends(...)]`?** Modern FastAPI DI. Reusable as type aliases, plays well with mypy, replaces the older `= Depends(...)` default-arg style.
+3. **Why a `providers/` folder for one file?** Because tier 3 will add a second one (`coincap.py` opt-in via API key) behind a `PriceProvider` protocol. Folders signal *intent*, not just current contents.
+4. **Why is `db_truncate_tables` gone?** It existed only because tests needed a clean slate. Now tests use a tmp file — no production code path needs it.
