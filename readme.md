@@ -1,6 +1,8 @@
-# Coin Tracker API — Tier 3 (Production)
+# Coin Tracker API
 
-> Final tier of a 3-tier teaching series. Async SQLAlchemy, Postgres-ready, refresh-token rotation, rate limiting, provider abstraction, Railway deploy.
+A coin-tracker FastAPI app, refactored four times across four git branches — from the messy 417-line `main.py` everyone writes first, to async SQLAlchemy + Postgres with refresh-token rotation. **The diffs between branches are the lesson.** One command to run the whole thing locally: `docker compose up`.
+
+> You're on `main` — the production tier. Pick where to start:
 >
 > | Branch | What you learn |
 > |---|---|
