@@ -99,25 +99,27 @@ Brute-force is the #1 way poorly-deployed APIs get owned. Tier 3 adds [slowapi](
 
 Limits are skipped in tests via `RATE_LIMIT_ENABLED=false` so the suite stays fast and deterministic.
 
-### 6. Railway deploy config
+### 6. Containerised local dev (Postgres included)
 
-Three files:
-
-- **`Procfile`** — `release` runs `alembic upgrade head` before each deploy, `web` boots uvicorn on `$PORT`
-- **`railway.json`** — health check at `/health`, restart policy, start command (Postgres-ready)
-- **`runtime.txt`** — pins Python 3.12 for predictable nixpacks builds
-
-Deploy steps:
+The headline of tier 3 is async + Postgres. We make that runnable with **one command** locally — no Python install required, no paid hosting needed:
 
 ```bash
-# In Railway dashboard:
-# 1. New Project → Deploy from GitHub repo → pick this branch
-# 2. Add a Postgres plugin → Railway auto-injects DATABASE_URL
-# 3. Add env vars: JWT_SECRET_KEY (long random), RATE_LIMIT_ENABLED=true
-# 4. Deploy. Migrations run automatically via the Procfile release step.
+docker compose up --build
 ```
 
-That's it. The `_normalize_database_url` helper makes Railway's `postgres://...` value work without manual edits.
+That spins up a Postgres container and the FastAPI app side by side, runs Alembic migrations, and serves the API on http://localhost:8000. Files involved:
+
+- **`Dockerfile`** — `python:3.12-slim`, installs deps, runs `alembic upgrade head && uvicorn ...`
+- **`docker-compose.yml`** — `db` (postgres:16-alpine) + `app`, wired together with a healthcheck so the app waits for the DB
+- **`.dockerignore`** — keeps the build context lean
+
+Optional production deploy reference (kept, not required):
+
+- **`Procfile`** — `release` runs `alembic upgrade head`, `web` boots uvicorn on `$PORT`
+- **`railway.json`** — health check at `/health`, restart policy
+- **`runtime.txt`** — pins Python 3.12
+
+These last three are example PaaS deploy config (Railway / Heroku-style). They show what shipping this app to a managed platform would look like, but they're not required to use the project.
 
 ## Folder layout (additions over tier 2)
 
@@ -140,33 +142,56 @@ app/
 └── db.py                     # async engine + AsyncSession
 alembic/versions/
 └── 0002_refresh_tokens.py    # NEW
-Procfile                      # NEW (Railway release + web)
-railway.json                  # NEW
+Dockerfile                    # NEW (one-command local dev)
+docker-compose.yml            # NEW (app + Postgres)
+.dockerignore                 # NEW
+Procfile                      # NEW (optional PaaS deploy reference)
+railway.json                  # NEW (optional PaaS deploy reference)
 runtime.txt                   # NEW (Python 3.12)
 pytest.ini                    # NEW (asyncio_mode = auto)
 ```
 
-## Run it locally
+## Quickstart — Docker (recommended)
+
+One command. No Python install, no Postgres install, no paid hosting:
+
+```bash
+docker compose up --build
+```
+
+This boots a Postgres container and the FastAPI app together, runs Alembic migrations, and serves on http://localhost:8000. Open http://localhost:8000/docs for the interactive Swagger UI.
+
+Run the test suite inside the container:
+
+```bash
+docker compose run --rm app pytest -v
+```
+
+**18 async tests, all green.** Includes refresh-token rotation, revocation, and rate-limit-disabled coverage.
+
+Tear down (data persists in a named volume):
+
+```bash
+docker compose down              # stop containers, keep data
+docker compose down -v           # stop AND wipe Postgres volume
+```
+
+## Quickstart — venv (no Docker)
+
+If you'd rather not use Docker, the app runs fine on a local Python interpreter against SQLite:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env                 # set JWT_SECRET_KEY
+cp .env.example .env                 # default DATABASE_URL is sqlite+aiosqlite
 
 alembic upgrade head                  # apply migrations to local sqlite
 uvicorn app.main:app --reload
+pytest -v                             # in another terminal
 ```
 
-Open http://localhost:8000/docs.
-
-## Test it
-
-```bash
-pytest -v
-```
-
-**18 async tests, all green.** Includes refresh-token rotation, revocation, and rate-limit-disabled coverage.
+Same code, same tests, just a different DB dialect — that's the dual-DB story tier 3 is teaching.
 
 ## Try the flow
 
@@ -219,7 +244,7 @@ curl -X POST http://localhost:8000/auth/logout \
 
 - Tier 0 → 1: separate concerns, fix REST verbs, add response models, swap a dead provider
 - Tier 1 → 2: introduce ORM, migrations, repos, services, domain exceptions
-- Tier 2 → 3: go async, add Postgres support, rotate refresh tokens, rate-limit auth, abstract providers, deploy to Railway
+- Tier 2 → 3: go async, add Postgres (via `docker compose`), rotate refresh tokens, rate-limit auth, abstract providers, ship a deployable container
 
 Same coin tracker. Same external API contract (one additive change: `refresh_token` in tier 3 responses). Three branches' worth of progressively production-grade lessons.
 

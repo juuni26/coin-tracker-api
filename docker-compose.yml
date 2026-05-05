@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: coin
+      POSTGRES_PASSWORD: coin
+      POSTGRES_DB: coin_tracker
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coin -d coin_tracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://coin:coin@db:5432/coin_tracker
+      # Override this when running anything beyond local exploration.
+      JWT_SECRET_KEY: local-dev-secret-change-me
+      ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+      REFRESH_TOKEN_EXPIRE_DAYS: "14"
+      # Disabled so the README curl walkthrough doesn't trip 429.
+      RATE_LIMIT_ENABLED: "false"
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
